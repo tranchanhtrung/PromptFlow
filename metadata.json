@@ -1,0 +1,11 @@
+{
+  "name": "PromptFlow",
+  "description": "AI-powered Teleprompter & Video Recording Studio designed for creators to film confidence-boosting, transcript-perfect videos with voice tracking, custom themes, and intelligent AI script editing.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
