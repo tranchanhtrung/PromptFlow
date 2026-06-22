@@ -108,6 +108,25 @@ export default function RecordingStudioView({
     return () => clearInterval(interval);
   }, [isRecording, isPaused]);
 
+  // 3b. Auto stop recording when threshold is reached
+  useEffect(() => {
+    const isUserPro = typeof window !== "undefined" ? localStorage.getItem("promptflow_user_is_pro") === "true" : false;
+    const limitSeconds = isUserPro ? 1800 : 1200; // 30 mins vs 20 mins (10x of 2 mins)
+
+    if (seconds >= limitSeconds) {
+      setIsRecording(false);
+      setIsPaused(false);
+      if (mediaRecorder && mediaRecorder.state !== "inactive") {
+        try {
+          mediaRecorder.stop();
+        } catch (e) {
+          console.warn("Stopping media recorder on limit exceeded:", e);
+        }
+      }
+      alert(`Ghi hình tự động kết thúc do đạt giới hạn tối đa ${isUserPro ? "30 phút (Hạng VIP)" : "20 phút (Gói dùng thử nhân 10)"} của ứng dụng.`);
+    }
+  }, [seconds, mediaRecorder]);
+
   // 4. Record triggers with standard countdown timer support
   const handleToggleRecord = () => {
     if (isRecording) {
@@ -273,11 +292,11 @@ export default function RecordingStudioView({
       </header>
 
       {/* CENTER PROMPTER OVERLAY text scrolling area */}
-      <div className="flex-1 flex items-start justify-center z-10 px-6 pt-20 pb-36 w-full select-none mt-2">
+      <div className="flex-1 flex items-start justify-center z-10 px-6 pt-3 pb-36 w-full select-none">
         
         {/* Transparent script block back-plate adjustable through Opacity slider */}
         <div 
-          className="w-full max-w-2xl rounded-3xl p-6 relative h-[380px] overflow-hidden script-scroll-mask border transition-colors duration-200 border-white/10 shadow-[0_12px_40px_rgba(0,0,0,0.8)]"
+          className="w-full max-w-2xl rounded-3xl p-6 relative h-[calc(100vh-210px)] min-h-[420px] max-h-[620px] overflow-hidden script-scroll-mask border transition-colors duration-200 border-white/10 shadow-[0_12px_40px_rgba(0,0,0,0.8)]"
           style={{ backgroundColor: `rgba(8, 8, 16, ${textOpacity})` }}
         >
           {/* Active topmost horizontal reading focus guide */}

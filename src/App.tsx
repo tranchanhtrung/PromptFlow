@@ -123,17 +123,17 @@ export default function App() {
     setCurrentView("editor");
   };
 
-  const handleAddScript = (folderId: string) => {
+  const handleAddScript = (folderId: string, importData?: { title: string; content: string }) => {
     const newId = `script-${Date.now()}`;
     const newScript: Script = {
       id: newId,
-      title: "New Custom Video Script",
-      content: "Bắt đầu gõ kịch bản chạy chữ ở đây... Nhấn nhẹ nút AI Assistant phía dưới góc phải màn hình để được trợ giúp soạn thảo cực kỳ nhanh bằng Gemini nhé. [Pause]",
+      title: importData?.title || "New Custom Video Script",
+      content: importData?.content || "Bắt đầu gõ kịch bản chạy chữ ở đây... Nhấn nhẹ nút AI Assistant phía dưới góc phải màn hình để được trợ giúp soạn thảo cực kỳ nhanh bằng Gemini nhé. [Pause]",
       folderId: folderId || "tiktok",
       tags: ["CREATOR"],
       wpm: defaultWpm,
       fontSize: defaultFontSize,
-      duration: "0:30 min",
+      duration: importData ? calculateDuration(importData.content, defaultWpm) : "0:30 min",
       isPro: false,
       lastUpdated: new Date().toISOString()
     };
@@ -161,10 +161,11 @@ export default function App() {
     }
   };
 
-  const handleUpdateScript = (fields: Partial<Script>) => {
-    if (!selectedScriptId) return;
+  const handleUpdateScript = (fields: Partial<Script>, scriptId?: string) => {
+    const targetId = scriptId || selectedScriptId;
+    if (!targetId) return;
     setScripts(prev => prev.map(s => {
-      if (s.id === selectedScriptId) {
+      if (s.id === targetId) {
         return {
           ...s,
           ...fields,

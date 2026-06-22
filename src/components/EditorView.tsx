@@ -1,5 +1,5 @@
-import { useState, useEffect } from "react";
-import { ArrowLeft, History, Settings as SettingsIcon, Sparkles, Bold, Italic, List, Link, Plus, Eye, Video, Check, FolderPlus, Trash2, FileText, Menu, X } from "lucide-react";
+import React, { useState, useEffect } from "react";
+import { ArrowLeft, History, Settings as SettingsIcon, Sparkles, Bold, Italic, List, Link, Plus, Eye, Video, Check, FolderPlus, Trash2, FileText, Menu, X, Upload, Pencil } from "lucide-react";
 import { Script, Workspace } from "../types";
 import { calculateDuration, getWordCount } from "../data";
 
@@ -7,11 +7,11 @@ interface EditorViewProps {
   script: Script;
   scripts: Script[];
   workspaces: Workspace[];
-  onSave: (updated: Partial<Script>) => void;
+  onSave: (updated: Partial<Script>, scriptId?: string) => void;
   onBack: () => void;
   onStartTeleprompter: () => void;
   onStartRecordingMode: () => void;
-  onAddScript: (folderId: string) => void;
+  onAddScript: (folderId: string, importData?: { title: string; content: string }) => void;
   onDeleteScript: (scriptId: string) => void;
   onSelectScript: (scriptId: string) => void;
   onAddWorkspace: (name: string) => string;
@@ -53,6 +53,81 @@ export default function EditorView({
   const [isAddingFolder, setIsAddingFolder] = useState(false);
   const [newFolderName, setNewFolderName] = useState("");
   const [isSidebarExpanded, setIsSidebarExpanded] = useState(() => typeof window !== "undefined" ? window.innerWidth >= 1024 : true);
+
+  // Script Import States & Functions
+  const [isImportOpen, setIsImportOpen] = useState(false);
+  const [importTitle, setImportTitle] = useState("");
+  const [importContent, setImportContent] = useState("");
+  const [importError, setImportError] = useState("");
+  const [isDragging, setIsDragging] = useState(false);
+
+  // States for Editing script inline in list
+  const [editingScriptId, setEditingScriptId] = useState<string | null>(null);
+  const [editingScriptTitle, setEditingScriptTitle] = useState("");
+
+  // States for deleting confirmation inline in list
+  const [deletingFolderId, setDeletingFolderId] = useState<string | null>(null);
+  const [deletingScriptId, setDeletingScriptId] = useState<string | null>(null);
+
+  const handleFileDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setIsDragging(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) {
+      processImportFile(file);
+    }
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      processImportFile(file);
+    }
+  };
+
+  const processImportFile = (file: File) => {
+    setImportError("");
+    const reader = new FileReader();
+
+    if (file.name.endsWith(".json")) {
+      reader.onload = (event) => {
+        try {
+          const json = JSON.parse(event.target?.result as string);
+          if (json.title || json.content) {
+            setImportTitle(json.title || file.name.replace(/\.[^/.]+$/, ""));
+            setImportContent(json.content || "");
+          } else {
+            setImportError("File JSON cần chứa trường 'title' hoặc 'content'.");
+          }
+        } catch (err) {
+          setImportError("Không thể đọc file JSON. Vui lòng kiểm tra định dạng.");
+        }
+      };
+      reader.readAsText(file);
+    } else if (file.name.endsWith(".txt")) {
+      reader.onload = (event) => {
+        setImportTitle(file.name.replace(/\.[^/.]+$/, ""));
+        setImportContent(event.target?.result as string || "");
+      };
+      reader.readAsText(file);
+    } else {
+      setImportError("Hệ thống chỉ hỗ trợ nhập file .txt hoặc .json");
+    }
+  };
+
+  const handleExecuteImport = () => {
+    if (!importContent.trim()) {
+      setImportError("Nội dung kịch bản không được để trống.");
+      return;
+    }
+    const finalTitle = importTitle.trim() || "Kịch bản nhập khẩu";
+    onAddScript(activeFolderId, { title: finalTitle, content: importContent });
+    // Reset and close
+    setImportTitle("");
+    setImportContent("");
+    setImportError("");
+    setIsImportOpen(false);
+  };
 
   // Synchronize internal states if activeScript gets changed externally
   useEffect(() => {
@@ -297,35 +372,57 @@ export default function EditorView({
                             <span className="text-[9px] px-1 py-0.2 bg-white/5 border border-white/5 text-on-surface-variant rounded font-mono font-bold shrink-0">{count}</span>
                           </button>
                           
-                          <div className="flex items-center gap-1 shrink-0 ml-1">
-                            <button 
-                              type="button"
-                              title="Sửa tên thư mục"
-                              onClick={() => {
-                                setEditingFolderId(ws.id);
-                                setEditingFolderName(ws.name);
-                              }}
-                              className="p-1 hover:text-primary transition-colors text-xs"
-                            >
-                              ✏️
-                            </button>
-                            <button 
-                              type="button"
-                              title="Xóa thư mục"
-                              onClick={() => {
-                                if (confirm(`Bạn muốn xóa thư mục "${ws.name}"? TẤT CẢ kịch bản bên trong sẽ được giữ lại và chuyển tự động sang các thư mục còn lại.`)) {
+                          {deletingFolderId === ws.id ? (
+                            <div className="flex items-center gap-1 shrink-0 ml-1 bg-[#ff4a4a]/10 px-1.5 py-0.5 rounded-lg border border-[#ff4a4a]/20 text-[10px]">
+                              <span className="text-[9px] text-[#ff4a4a] font-mono mr-1">Xóa?</span>
+                              <button 
+                                type="button"
+                                onClick={() => {
                                   onDeleteWorkspace(ws.id);
                                   const remainder = workspaces.filter(w => w.id !== ws.id);
                                   if (remainder.length > 0) {
                                     setActiveFolderId(remainder[0].id);
                                   }
-                                }
-                              }}
-                              className="p-1 hover:text-recording-red transition-colors text-xs"
-                            >
-                              🗑️
-                            </button>
-                          </div>
+                                  setDeletingFolderId(null);
+                                }}
+                                className="font-bold text-emerald-400 hover:text-emerald-300 px-1 font-mono uppercase cursor-pointer"
+                              >
+                                Có
+                              </button>
+                              <span className="text-white/20">|</span>
+                              <button 
+                                type="button"
+                                onClick={() => setDeletingFolderId(null)}
+                                className="font-bold text-slate-400 hover:text-slate-300 px-1 font-mono uppercase cursor-pointer"
+                              >
+                                Hủy
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-1 shrink-0 ml-1">
+                              <button 
+                                type="button"
+                                title="Sửa tên thư mục"
+                                onClick={() => {
+                                  setEditingFolderId(ws.id);
+                                  setEditingFolderName(ws.name);
+                                }}
+                                className="p-1 hover:text-primary transition-colors text-xs cursor-pointer"
+                              >
+                                ✏️
+                              </button>
+                              <button 
+                                type="button"
+                                title="Xóa thư mục"
+                                onClick={() => {
+                                  setDeletingFolderId(ws.id);
+                                }}
+                                className="p-1 hover:text-recording-red transition-colors text-xs cursor-pointer"
+                              >
+                                🗑️
+                              </button>
+                            </div>
+                          )}
                         </>
                       )}
                     </div>
@@ -341,17 +438,30 @@ export default function EditorView({
               <div className="flex items-center justify-between">
                 <div className="flex gap-2 items-center">
                   <span className="text-primary text-sm">⚡</span>
-                  <h3 className="text-[10px] font-mono uppercase tracking-widest text-[#e8e0f0] font-bold">Kịch bản trong mục</h3>
+                  <h3 className="text-[10px] font-mono uppercase tracking-widest text-[#e8e0f0] font-[#00ffcc]">Kịch bản trong mục</h3>
                 </div>
-                <button 
-                  type="button"
-                  onClick={() => {
-                    onAddScript(activeFolderId);
-                  }} 
-                  className="text-[9px] font-mono text-secondary hover:text-[#00ffcc] border border-secondary/20 hover:border-secondary px-2 py-0.5 rounded-lg hover:bg-secondary/5 transition-colors flex items-center gap-1 cursor-pointer font-bold"
-                >
-                  <Plus className="w-2.5 h-2.5" /> +KỊCH BẢN
-                </button>
+                <div className="flex gap-1.5 shrink-0">
+                  <button 
+                    type="button"
+                    onClick={() => {
+                      onAddScript(activeFolderId);
+                    }} 
+                    className="text-[9px] font-mono text-secondary hover:text-[#00ffcc] border border-secondary/20 hover:border-secondary px-1.5 py-0.5 rounded-lg hover:bg-secondary/5 transition-colors flex items-center gap-1 cursor-pointer font-bold"
+                    title="Tạo mới kịch bản trắng"
+                  >
+                    <Plus className="w-2.5 h-2.5" /> +THÊM
+                  </button>
+                  <button 
+                    type="button"
+                    onClick={() => {
+                      setIsImportOpen(true);
+                    }} 
+                    className="text-[9px] font-mono text-[#00ffcc] hover:text-[#00ffcc]/80 border border-[#00ffcc]/20 hover:border-[#00ffcc]/60 px-1.5 py-0.5 rounded-lg hover:bg-[#00ffcc]/5 transition-colors flex items-center gap-1 cursor-pointer font-bold"
+                    title="Nhập kịch bản từ file .txt, .json hoặc dán trực tiếp"
+                  >
+                    <Upload className="w-2.5 h-2.5" /> IMPORT
+                  </button>
+                </div>
               </div>
 
               {/* Vertical scrollable script listing */}
@@ -359,17 +469,28 @@ export default function EditorView({
                 {scripts.filter(s => s.folderId === activeFolderId).length === 0 ? (
                   <div className="p-4 text-center border border-dashed border-white/5 rounded-xl">
                     <p className="text-[10px] text-on-surface-variant/30 font-mono">Chưa có kịch bản</p>
-                    <button
-                      type="button"
-                      onClick={() => onAddScript(activeFolderId)}
-                      className="text-[10px] font-bold text-primary mt-1 underline outline-none"
-                    >
-                      + Tạo ngay
-                    </button>
+                    <div className="flex gap-2 justify-center mt-2">
+                      <button
+                        type="button"
+                        onClick={() => onAddScript(activeFolderId)}
+                        className="text-[10px] font-bold text-primary underline outline-none"
+                      >
+                        + Tạo mới
+                      </button>
+                      <span className="text-white/10 text-[10px]">•</span>
+                      <button
+                        type="button"
+                        onClick={() => setIsImportOpen(true)}
+                        className="text-[10px] font-bold text-[#00ffcc] underline outline-none"
+                      >
+                        📥 Nhập file
+                      </button>
+                    </div>
                   </div>
                 ) : (
                   scripts.filter(s => s.folderId === activeFolderId).map((s) => {
                     const isActive = s.id === script.id;
+                    const isEditing = editingScriptId === s.id;
                     return (
                       <div 
                         key={s.id}
@@ -379,42 +500,130 @@ export default function EditorView({
                             : "border-white/5 bg-background/10 text-on-surface-variant hover:border-white/10"
                         }`}
                       >
-                        <button 
-                          type="button"
-                          onClick={() => onSelectScript(s.id)}
-                          className="flex-1 text-left font-display font-medium truncate pr-2 group outline-none"
-                        >
-                          <div className={`truncate ${isActive ? "text-primary font-bold" : "text-on-surface/80 group-hover:text-white"}`}>
-                            {s.title || "Kịch bản chưa đặt tên"}
-                          </div>
-                          <div className="text-[9px] text-on-surface-variant/50 font-mono mt-0.5 uppercase tracking-wider">
-                            ⏱ {calculateDuration(s.content, s.wpm || 130)} • {s.content.split(/\s+/).filter(Boolean).length} từ
-                          </div>
-                        </button>
-
-                        <button 
-                          type="button"
-                          title="Xóa kịch bản này"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            if (confirm(`Bạn chắc chắn muốn xóa vĩnh viễn kịch bản "${s.title || 'không tên'}"?`)) {
-                              onDeleteScript(s.id);
-                              // Auto pick another script from activeFolderId
-                              const remainder = scripts.filter(sc => sc.folderId === activeFolderId && sc.id !== s.id);
-                              if (remainder.length > 0) {
-                                onSelectScript(remainder[0].id);
-                              } else {
-                                const allRemaining = scripts.filter(sc => sc.id !== s.id);
-                                if (allRemaining.length > 0) {
-                                  onSelectScript(allRemaining[0].id);
+                        {isEditing ? (
+                          <div className="flex-1 flex items-center gap-1.5 pr-2">
+                            <input 
+                              type="text"
+                              value={editingScriptTitle}
+                              onChange={(e) => setEditingScriptTitle(e.target.value)}
+                              className="flex-1 h-8 px-2 bg-background border border-[#00ffcc]/50 rounded-lg text-xs text-white outline-none focus:border-[#00ffcc] focus:ring-1 focus:ring-[#00ffcc]/20 font-bold"
+                              autoFocus
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") {
+                                  onSave({ title: editingScriptTitle }, s.id);
+                                  if (isActive) {
+                                    setTitle(editingScriptTitle);
+                                  }
+                                  setEditingScriptId(null);
+                                } else if (e.key === "Escape") {
+                                  setEditingScriptId(null);
                                 }
-                              }
-                            }
-                          }}
-                          className="p-1 text-on-surface-variant/40 hover:text-recording-red transition-all cursor-pointer opacity-40 hover:opacity-100 shrink-0"
-                        >
-                          🗑️
-                        </button>
+                              }}
+                              onBlur={() => {
+                                onSave({ title: editingScriptTitle }, s.id);
+                                if (isActive) {
+                                  setTitle(editingScriptTitle);
+                                }
+                                setEditingScriptId(null);
+                              }}
+                            />
+                            <button
+                              onClick={() => {
+                                onSave({ title: editingScriptTitle }, s.id);
+                                if (isActive) {
+                                  setTitle(editingScriptTitle);
+                                }
+                                setEditingScriptId(null);
+                              }}
+                              className="p-1 text-[#00ffcc] hover:text-[#00ffcc]/80"
+                              title="Lưu"
+                            >
+                              <Check className="w-4 h-4" />
+                            </button>
+                          </div>
+                        ) : (
+                          <button 
+                            type="button"
+                            onClick={() => onSelectScript(s.id)}
+                            className="flex-1 text-left font-display font-medium truncate pr-2 group outline-none"
+                          >
+                            <div className={`truncate ${isActive ? "text-primary font-bold" : "text-on-surface/80 group-hover:text-white"}`}>
+                              {s.title || "Kịch bản chưa đặt tên"}
+                            </div>
+                            <div className="text-[9px] text-on-surface-variant/50 font-mono mt-0.5 uppercase tracking-wider">
+                              ⏱ {calculateDuration(s.content, s.wpm || 130)} • {s.content.split(/\s+/).filter(Boolean).length} từ
+                            </div>
+                          </button>
+                        )}
+
+                        {!isEditing && (
+                          deletingScriptId === s.id ? (
+                            <div className="flex items-center gap-1 shrink-0 ml-1 bg-[#ff4a4a]/10 px-1.5 py-0.5 rounded-lg border border-[#ff4a4a]/20 text-[10px]">
+                              <span className="text-[9px] text-[#ff4a4a] font-mono mr-1">Xóa?</span>
+                              <button 
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onDeleteScript(s.id);
+                                  // Pick replacement only if we deleted the currently active script
+                                  if (isActive) {
+                                    const remainder = scripts.filter(sc => sc.folderId === activeFolderId && sc.id !== s.id);
+                                    if (remainder.length > 0) {
+                                      onSelectScript(remainder[0].id);
+                                    } else {
+                                      const allRemaining = scripts.filter(sc => sc.id !== s.id);
+                                      if (allRemaining.length > 0) {
+                                        onSelectScript(allRemaining[0].id);
+                                      }
+                                    }
+                                  }
+                                  setDeletingScriptId(null);
+                                }}
+                                className="font-bold text-emerald-400 hover:text-emerald-300 px-1 font-mono uppercase cursor-pointer"
+                              >
+                                Có
+                              </button>
+                              <span className="text-white/20">|</span>
+                              <button 
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setDeletingScriptId(null);
+                                }}
+                                className="font-bold text-slate-400 hover:text-slate-300 px-1 font-mono uppercase cursor-pointer"
+                              >
+                                Hủy
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-1 shrink-0">
+                              <button 
+                                type="button"
+                                title="Sửa tiêu đề"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setEditingScriptId(s.id);
+                                  setEditingScriptTitle(s.title || "");
+                                }}
+                                className="p-1.5 text-primary hover:text-white hover:bg-primary/20 rounded-lg transition-all cursor-pointer opacity-80 hover:opacity-100 shrink-0"
+                              >
+                                <Pencil className="w-3.5 h-3.5 text-primary" />
+                              </button>
+
+                              <button 
+                                type="button"
+                                title="Xóa kịch bản"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setDeletingScriptId(s.id);
+                                }}
+                                className="p-1.5 text-[#ff4a4a] hover:text-white hover:bg-[#ff4a4a]/20 rounded-lg transition-all cursor-pointer opacity-80 hover:opacity-100 shrink-0"
+                              >
+                                <Trash2 className="w-3.5 h-3.5 text-recording-red" />
+                              </button>
+                            </div>
+                          )
+                        )}
                       </div>
                     );
                   })
@@ -685,6 +894,117 @@ export default function EditorView({
                 className="w-full py-3 bg-gradient-to-r from-primary to-primary-container text-white font-bold font-label text-xs uppercase rounded-xl tracking-wider shadow-lg hover:opacity-95 transition-all active:scale-95 outline-none"
               >
                 LƯU THIẾT LẬP
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* SCRIPT IMPORT MODAL */}
+      {isImportOpen && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-background/85 backdrop-blur-md animate-in fade-in duration-300">
+          <div className="w-full max-w-lg bg-surface-container rounded-2xl p-6 shadow-2xl border border-white/10 flex flex-col relative animate-in zoom-in-95 duration-200">
+            <button 
+              onClick={() => {
+                setImportTitle("");
+                setImportContent("");
+                setImportError("");
+                setIsImportOpen(false);
+              }}
+              className="absolute top-4 right-4 p-1.5 bg-white/5 hover:bg-white/10 rounded-full text-on-surface-variant hover:text-white transition-colors"
+            >
+              <X className="w-4 h-4" />
+            </button>
+
+            <div className="mb-4">
+              <h3 className="font-display font-extrabold text-lg text-primary flex items-center gap-2 uppercase tracking-wide">
+                <Upload className="w-5 h-5 text-[#00ffcc] animate-pulse" />
+                <span>Nhập Kịch Bản</span>
+              </h3>
+              <p className="text-[10px] text-on-surface-variant font-mono mt-0.5 uppercase tracking-wider text-[#00ffcc]/80">
+                Hỗ trợ tải lên file (.txt, .json) hoặc dán trực tiếp
+              </p>
+            </div>
+
+            {/* ERROR BANNER */}
+            {importError && (
+              <div className="mb-4 p-3 rounded-xl bg-recording-red/10 border border-recording-red/30 text-recording-red text-xs font-mono animate-bounce">
+                ⚠️ {importError}
+              </div>
+            )}
+
+            <div className="space-y-4 flex-1">
+              {/* DRAG AND DROP ZONE */}
+              <div
+                onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+                onDragLeave={() => setIsDragging(false)}
+                onDrop={handleFileDrop}
+                className={`p-6 border-2 border-dashed rounded-xl flex flex-col items-center justify-center text-center transition-all ${
+                  isDragging 
+                    ? "border-[#00ffcc] bg-[#00ffcc]/5 scale-98" 
+                    : "border-white/10 hover:border-primary/40 bg-background/30"
+                }`}
+              >
+                <Upload className={`w-8 h-8 mb-2 transition-transform ${isDragging ? "text-[#00ffcc] scale-110" : "text-on-surface-variant/40"}`} />
+                <p className="text-xs text-on-surface font-semibold">Kéo & thả file kịch bản tại đây</p>
+                <p className="text-[10px] text-on-surface-variant mt-1 col-span-2">Đình dạng hỗ trợ: .txt hoặc .json</p>
+                
+                <div className="relative mt-3">
+                  <button className="px-3 py-1.5 bg-primary/20 hover:bg-primary/35 border border-primary/30 text-white rounded-lg text-xs font-semibold cursor-pointer transition-all">
+                    Chọn tệp từ máy
+                  </button>
+                  <input
+                    type="file"
+                    accept=".txt,.json"
+                    onChange={handleFileChange}
+                    className="absolute inset-0 opacity-0 cursor-pointer w-full"
+                  />
+                </div>
+              </div>
+
+              {/* MANUAL PASTE AREA */}
+              <div className="space-y-3">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-mono text-on-surface-variant/80 uppercase font-bold">Tiêu đề kịch bản:</label>
+                  <input
+                    type="text"
+                    value={importTitle}
+                    onChange={(e) => setImportTitle(e.target.value)}
+                    placeholder="Nhập tiêu đề (hoặc tự động lấy từ tên file)..."
+                    className="w-full h-10 px-3 bg-background/50 border border-white/15 rounded-xl text-xs text-on-surface outline-none focus:border-primary/40 focus:ring-1 focus:ring-primary/20"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] font-mono text-on-surface-variant/80 uppercase font-bold">Nội dung kịch bản:</label>
+                  <textarea
+                    value={importContent}
+                    onChange={(e) => setImportContent(e.target.value)}
+                    placeholder="Nhập nội dung kịch bản hoặc dán trực tiếp văn bản của bạn tại đây... Sử dụng dấu [Pause] để đánh dấu điểm ngắt nhịp của Teleprompter..."
+                    rows={6}
+                    className="w-full p-3 bg-background/50 border border-white/15 rounded-xl text-xs text-on-surface outline-none focus:border-primary/40 focus:ring-1 focus:ring-primary/20 resize-none leading-relaxed"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="flex gap-3 mt-6">
+              <button
+                onClick={() => {
+                  setImportTitle("");
+                  setImportContent("");
+                  setImportError("");
+                  setIsImportOpen(false);
+                }}
+                className="flex-1 py-3 bg-white/5 hover:bg-white/10 rounded-xl border border-white/5 text-xs text-on-surface font-semibold"
+              >
+                Hủy bỏ
+              </button>
+              <button
+                onClick={handleExecuteImport}
+                className="flex-1 py-3 bg-gradient-to-r from-primary to-primary-container text-white rounded-xl shadow-lg hover:opacity-95 text-xs font-bold uppercase transition-all"
+              >
+                Nhập kịch bản
               </button>
             </div>
           </div>

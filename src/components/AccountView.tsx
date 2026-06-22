@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { 
   User, 
   ShieldCheck, 
@@ -14,7 +14,10 @@ import {
   TrendingUp, 
   HelpCircle,
   Copy,
-  AlertCircle
+  AlertCircle,
+  Play,
+  Pause,
+  RotateCcw
 } from "lucide-react";
 
 interface AccountViewProps {
@@ -57,6 +60,41 @@ export default function AccountView({
   const [checkoutPhase, setCheckoutPhase] = useState<"idle" | "verifying" | "success">("idle");
   const [progressPercent, setProgressPercent] = useState(0);
   const [progressMessage, setProgressMessage] = useState("");
+  const [showDowngradeConfirm, setShowDowngradeConfirm] = useState(false);
+
+  // States & Scroll loop for Live Teleprompter Speed Previewer
+  const [previewWpm, setPreviewWpm] = useState(130);
+  const [isPreviewRunning, setIsPreviewRunning] = useState(true);
+  const previewScrollContainerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!isPreviewRunning) return;
+    let lastTime = performance.now();
+    let animationFrameId: number;
+
+    const scrollLoop = (currentTime: number) => {
+      const deltaTime = (currentTime - lastTime) / 1000;
+      lastTime = currentTime;
+
+      const container = previewScrollContainerRef.current;
+      if (container) {
+        // WPM speed simulation factor (0.24 matches typical reading speed per word)
+        const pixelsPerSecond = previewWpm * 0.24;
+        let nextScrollTop = container.scrollTop + (pixelsPerSecond * deltaTime);
+
+        const maxScroll = container.scrollHeight - container.clientHeight;
+        if (nextScrollTop >= maxScroll) {
+          nextScrollTop = 0;
+        }
+        container.scrollTop = nextScrollTop;
+      }
+
+      animationFrameId = requestAnimationFrame(scrollLoop);
+    };
+
+    animationFrameId = requestAnimationFrame(scrollLoop);
+    return () => cancelAnimationFrame(animationFrameId);
+  }, [isPreviewRunning, previewWpm]);
 
   // Base Prices (VND / USD exchange equivalence)
   const baseMonthlyPrice = 149000; // 149,000 VND
@@ -193,28 +231,27 @@ export default function AccountView({
 
   // Downgrade to standard free logic
   const handleDowngradeToFree = () => {
-    if (confirm("Bạn có chắc chắn muốn hủy gia hạn và chuyển về tài khoản thường (Free) không? Bạn sẽ mất quyền truy cập không giới hạn.")) {
-      onTogglePro(false);
-      setCheckoutPhase("idle");
-      setPromoCode("");
-      setAppliedDiscount(0);
-      setPromoMessage({ text: "", type: "" });
-      
-      try {
-        const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
-        const now = audioCtx.currentTime;
-        const osc = audioCtx.createOscillator();
-        const gain = audioCtx.createGain();
-        osc.connect(gain);
-        gain.connect(audioCtx.destination);
-        osc.frequency.setValueAtTime(330, now);
-        osc.frequency.setValueAtTime(220, now + 0.1);
-        gain.gain.setValueAtTime(0.05, now);
-        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
-        osc.start(now);
-        osc.stop(now + 0.25);
-      } catch (e) {}
-    }
+    onTogglePro(false);
+    setCheckoutPhase("idle");
+    setPromoCode("");
+    setAppliedDiscount(0);
+    setPromoMessage({ text: "", type: "" });
+    setShowDowngradeConfirm(false);
+    
+    try {
+      const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const now = audioCtx.currentTime;
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.frequency.setValueAtTime(330, now);
+      osc.frequency.setValueAtTime(220, now + 0.1);
+      gain.gain.setValueAtTime(0.05, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
+      osc.start(now);
+      osc.stop(now + 0.25);
+    } catch (e) {}
   };
 
   return (
@@ -356,7 +393,7 @@ export default function AccountView({
               <div className="space-y-1.5">
                 <div className="flex justify-between font-mono text-[10px] text-on-surface-variant uppercase">
                   <span>Dung lượng kịch bản (Scripts):</span>
-                  <span className="text-white font-bold">{isPro ? "VÔ HẠN (∞)" : "3 / 5 kịch bản"}</span>
+                  <span className="text-white font-bold">{isPro ? "VÔ HẠN (∞)" : "30 / 50 kịch bản (Dùng thử tăng 10 lần)"}</span>
                 </div>
                 <div className="h-2 bg-white/5 rounded-full overflow-hidden border border-white/[0.02]">
                   <div 
@@ -370,7 +407,7 @@ export default function AccountView({
               <div className="space-y-1.5">
                 <div className="flex justify-between font-mono text-[10px] text-on-surface-variant uppercase">
                   <span>Thời lượng quay mỗi Video:</span>
-                  <span className="text-white font-bold">{isPro ? "KHÔNG GIỚI HẠN (∞)" : "Tối đa 2 Phút"}</span>
+                  <span className="text-white font-bold">{isPro ? "Tối đa 30 Phút (VIP Không giới hạn)" : "Tối đa 20 Phút (Gói dùng thử nhân 10 lần)"}</span>
                 </div>
                 <div className="h-2 bg-white/5 rounded-full overflow-hidden border border-white/[0.02]">
                   <div 
@@ -378,6 +415,14 @@ export default function AccountView({
                     style={{ width: isPro ? "100%" : "40%" }}
                   ></div>
                 </div>
+              </div>
+
+              {/* Each record duration disclaimer */}
+              <div className="flex justify-between items-center py-1 mt-1 border-t border-white/5">
+                <span className="font-mono text-[10px] text-on-surface-variant uppercase">Giới hạn thời lượng quay:</span>
+                <span className="font-mono text-[9px] font-bold text-amber-400">
+                  MỖI RECORD KHÔNG QUÁ 30 PHÚT
+                </span>
               </div>
 
               {/* Sound and gaze guide status */}
@@ -391,15 +436,181 @@ export default function AccountView({
               {/* Downward control simulation */}
               {isPro && (
                 <div className="pt-3">
-                  <button 
-                    onClick={handleDowngradeToFree}
-                    className="w-full py-2 border border-recording-red/20 text-recording-red bg-recording-red/5 hover:bg-recording-red hover:text-white rounded-xl text-[10px] font-bold font-mono uppercase tracking-wider transition-all active:scale-95"
-                  >
-                    Hạ cấp về bản Free (Hủy Đăng ký)
-                  </button>
+                  {showDowngradeConfirm ? (
+                    <div className="p-3 rounded-xl border border-recording-red/30 bg-recording-red/5 space-y-2.5">
+                      <p className="text-[10px] text-recording-red font-bold uppercase tracking-wider">Hủy đăng ký Premium?</p>
+                      <p className="text-[10px] text-on-surface-variant/80">Bạn sẽ mất các quyền lợi Pro, giới hạn thời lượng quay, và tính năng theo dõi mắt thông minh.</p>
+                      <div className="flex gap-2">
+                        <button 
+                          onClick={handleDowngradeToFree}
+                          className="flex-1 py-1.5 bg-recording-red text-white hover:bg-recording-red/80 rounded-lg text-[9px] font-bold font-mono uppercase tracking-wider transition-all cursor-pointer"
+                        >
+                          Xác nhận hạ cấp
+                        </button>
+                        <button 
+                          onClick={() => setShowDowngradeConfirm(false)}
+                          className="flex-1 py-1.5 bg-white/5 hover:bg-white/10 text-on-surface-variant hover:text-white rounded-lg text-[9px] font-bold font-mono uppercase tracking-wider transition-all cursor-pointer"
+                        >
+                          Giữ lại Pro
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button 
+                      onClick={() => setShowDowngradeConfirm(true)}
+                      className="w-full py-2 border border-recording-red/20 text-recording-red bg-recording-red/5 hover:bg-recording-red hover:text-white rounded-xl text-[10px] font-bold font-mono uppercase tracking-wider transition-all active:scale-95 cursor-pointer"
+                    >
+                      Hạ cấp về bản Free (Hủy Đăng ký)
+                    </button>
+                  )}
                 </div>
               )}
 
+            </div>
+          </div>
+
+          {/* LIVE CHỮ CHẠY TỐC ĐỘ PREVIEW */}
+          <div className="glass-card p-6 bg-surface-container-low/70 border border-white/5 rounded-3xl space-y-4 shadow-xl relative overflow-hidden">
+            <div className="absolute right-[-20px] top-[-20px] w-24 h-24 bg-secondary/5 rounded-full blur-xl pointer-events-none"></div>
+
+            <div className="flex justify-between items-start">
+              <div className="space-y-0.5">
+                <h3 className="font-display font-bold text-xs uppercase tracking-wider text-on-surface/90 flex items-center gap-1.5">
+                  <span className="animate-spin text-secondary">⚙️</span>
+                  <span>Trải nghiệm Máy Chạy Chữ</span>
+                </h3>
+                <p className="text-[9px] font-mono text-[#00ffcc] uppercase tracking-wider">Cảm nhận và điều chỉnh tốc độ đọc</p>
+              </div>
+
+              {/* Badges based on WPM */}
+              <div className="text-right">
+                <span className={`px-2 py-0.5 rounded text-[8px] font-mono font-bold uppercase transition-all ${
+                  previewWpm < 120 
+                    ? "bg-slate-500/10 border border-slate-500/20 text-slate-400" 
+                    : previewWpm < 180 
+                    ? "bg-emerald-500/10 border border-emerald-500/20 text-emerald-400" 
+                    : previewWpm < 250 
+                    ? "bg-amber-500/10 border border-amber-500/20 text-amber-400" 
+                    : "bg-recording-red/10 border border-recording-red/20 text-recording-red"
+                }`}>
+                  {previewWpm < 120 
+                    ? "Nói Chậm / Thư giãn" 
+                    : previewWpm < 180 
+                    ? "Vừa phải / Chuẩn tin tức" 
+                    : previewWpm < 250 
+                    ? "Nói Nhanh / Hào hứng" 
+                    : "Siêu Tốc / Bắn Rap"}
+                </span>
+              </div>
+            </div>
+
+            {/* LIVE SIMULATOR DISPLAY SCREEN */}
+            <div className="relative rounded-2xl bg-black/45 border border-white/5 overflow-hidden h-[150px] shadow-inner select-none">
+              
+              {/* Center focus indicator line overlay */}
+              <div className="absolute left-0 right-0 top-1/2 -translate-y-1/2 h-8 pointer-events-none bg-primary/5 border-t border-b border-primary/10 flex items-center justify-between px-3">
+                <span className="text-[7px] font-mono text-primary animate-pulse">▶ ĐỌC TẠI ĐÂY</span>
+                <span className="text-[7px] font-mono text-primary animate-pulse">READ LINE ◀</span>
+              </div>
+
+              {/* Scrolling text area */}
+              <div 
+                ref={previewScrollContainerRef}
+                className="w-full h-full overflow-y-scroll no-scrollbar py-[60px] px-4 font-display font-semibold text-sm leading-relaxed text-center text-white/50"
+                style={{ scrollBehavior: 'auto' }}
+              >
+                <div className="space-y-4">
+                  <p className="text-white font-black neon-glow-pink text-xs">CHÀO MỪNG BẠN ĐẾN VỚI VTELEPROMPTER!</p>
+                  <p>Màn hình này đang mô phỏng máy chạy chữ với tốc độ thực tế.</p>
+                  <p className="text-secondary font-bold text-xs">Hãy nói đuổi theo dòng chữ này để cảm nhận nhịp điệu.</p>
+                  <p>Hệ thống hỗ trợ tốc độ từ cực chậm 100 từ mỗi phút đến cực đại là 500 từ mỗi phút.</p>
+                  <p className="text-[#00ffcc] font-extrabold font-mono text-xs">DÙNG THANH TRƯỢT DƯỚI ĐÂY ĐỂ ĐIỀU CHỈNH CHUẨN XÁC.</p>
+                  <p>Học cách làm chủ tốc độ nói sẽ giúp bạn tự tin gấp mười lần trước ống kính camera.</p>
+                  <p className="text-white/30 text-xs">--- Kịch bản chạy chữ mẫu kết thúc --- Bấm Reset để chạy lại từ đầu ---</p>
+                </div>
+              </div>
+            </div>
+
+            {/* LIVE SPEED SLIDER CONTROLS */}
+            <div className="space-y-2">
+              <div className="flex justify-between items-center text-xs">
+                <span className="font-mono text-[9px] uppercase font-bold text-on-surface-variant/70">Thiết lập Tốc độ Trôi:</span>
+                <span className="font-mono font-black text-[#00ffcc] text-xs">
+                  {previewWpm} WPM (từ/phút)
+                </span>
+              </div>
+
+              <div className="flex items-center gap-3">
+                {/* Decrement Button */}
+                <button
+                  type="button"
+                  onClick={() => setPreviewWpm(prev => Math.max(100, prev - 10))}
+                  className="w-8 h-8 rounded-lg bg-white/5 border border-white/5 text-on-surface-variant hover:text-white hover:bg-white/10 flex items-center justify-center font-mono font-bold cursor-pointer transition-colors"
+                >
+                  -
+                </button>
+
+                {/* Range Input Slider container */}
+                <div className="flex-1 relative flex items-center">
+                  <input
+                    type="range"
+                    min={100}
+                    max={500}
+                    step={5}
+                    value={previewWpm}
+                    onChange={(e) => setPreviewWpm(Number(e.target.value))}
+                    className="w-full accent-primary bg-white/10 rounded-lg appearance-none h-2 cursor-pointer focus:outline-none"
+                  />
+                </div>
+
+                {/* Increment Button */}
+                <button
+                  type="button"
+                  onClick={() => setPreviewWpm(prev => Math.min(500, prev + 10))}
+                  className="w-8 h-8 rounded-lg bg-white/5 border border-white/5 text-on-surface-variant hover:text-white hover:bg-white/10 flex items-center justify-center font-mono font-bold cursor-pointer transition-colors"
+                >
+                  +
+                </button>
+              </div>
+
+              {/* Operational Control triggers */}
+              <div className="flex gap-2.5 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setIsPreviewRunning(!isPreviewRunning)}
+                  className={`flex-1 py-1.5 rounded-lg border text-[10px] font-mono font-bold uppercase cursor-pointer flex items-center justify-center gap-1.5 transition-all ${
+                    isPreviewRunning 
+                      ? "bg-amber-500/10 border-amber-500/20 text-amber-400 hover:bg-amber-500/15" 
+                      : "bg-emerald-500/10 border-emerald-500/20 text-emerald-400 hover:bg-emerald-500/15"
+                  }`}
+                >
+                  {isPreviewRunning ? (
+                    <>
+                      <Pause className="w-3.5 h-3.5" />
+                      <span>Tạm dừng cuộn</span>
+                    </>
+                  ) : (
+                    <>
+                      <Play className="w-3.5 h-3.5 text-emerald-400 fill-emerald-400" />
+                      <span>Bắt đầu cuộn</span>
+                    </>
+                  )}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (previewScrollContainerRef.current) {
+                      previewScrollContainerRef.current.scrollTop = 0;
+                    }
+                  }}
+                  className="px-3.5 py-1.5 rounded-lg bg-white/5 border border-white/5 text-on-surface-variant hover:text-white hover:bg-white/10 text-[10px] font-mono uppercase flex items-center justify-center gap-1 transition-all cursor-pointer"
+                  title="Cuộn lại từ đầu"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span>Reset</span>
+                </button>
+              </div>
             </div>
           </div>
 

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Sliders, RefreshCw, Layers, Check } from "lucide-react";
 
 interface SettingsViewProps {
@@ -18,6 +18,36 @@ export default function SettingsView({
   const [fontSize, setFontSize] = useState(defaultFontSize);
   const [fontFamily, setFontFamily] = useState(defaultFontFamily);
   const [savedSuccess, setSavedSuccess] = useState(false);
+
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    let lastTime = performance.now();
+    let animationFrameId: number;
+
+    const scrollLoop = (currentTime: number) => {
+      const deltaTime = (currentTime - lastTime) / 1000;
+      lastTime = currentTime;
+
+      const container = scrollContainerRef.current;
+      if (container) {
+        // WPM speed scroll factor (approx 0.22 pixels per WPM per second)
+        const pixelsPerSecond = speed * 0.22;
+        let nextScrollTop = container.scrollTop + (pixelsPerSecond * deltaTime);
+
+        const maxScroll = container.scrollHeight - container.clientHeight;
+        if (nextScrollTop >= maxScroll - 1) {
+          nextScrollTop = 0;
+        }
+        container.scrollTop = nextScrollTop;
+      }
+
+      animationFrameId = requestAnimationFrame(scrollLoop);
+    };
+
+    animationFrameId = requestAnimationFrame(scrollLoop);
+    return () => cancelAnimationFrame(animationFrameId);
+  }, [speed]);
 
   const fontOptions = [
     { label: "Sora", fontClass: "font-display" },
@@ -61,24 +91,40 @@ export default function SettingsView({
       <section className="space-y-2 relative z-10 pt-2">
         <label className="font-label text-xs uppercase tracking-widest text-on-surface-variant/80 tracking-wide block px-1">Xem trước chữ chạy</label>
         
-        <div className="glass-card rounded-xl h-48 overflow-hidden relative border border-primary/20 shadow-[0_0_20px_rgba(255,45,120,0.1)] flex flex-col justify-center items-center p-6 text-center">
+        <div className="glass-card rounded-xl h-48 overflow-hidden relative border border-primary/20 shadow-[0_0_20px_rgba(255,45,120,0.1)] flex flex-col p-6">
           
-          {/* Animated scrolling preview simulator */}
-          <div className="space-y-4 animate-pulse">
-            <p 
-              className="font-bold text-on-surface leading-normal select-none transition-all duration-300" 
-              style={{ 
-                fontSize: `${fontSize}px`, 
-                fontFamily: fontFamily === "Sora" ? "var(--font-display)" : fontFamily === "Inter" ? "var(--font-sans)" : fontFamily === "Space Grotesk" ? "var(--font-label)" : "var(--font-mono)"
-              }}
-            >
-              Chào mừng bạn đến với PromptFlow. Đây là nội dung mẫu hiển thị trực quan.
-            </p>
-            <p className="text-xs text-on-surface-variant/70 italic">[Điều chỉnh phông chữ, kích cỡ và tốc độ cuộn ở bảng điều khiển bên dưới]</p>
+          {/* Scrollable text box simulating speed, size and font style */}
+          <div 
+            ref={scrollContainerRef}
+            className="w-full h-full overflow-y-scroll no-scrollbar py-20 text-center"
+            style={{ scrollBehavior: "auto" }}
+          >
+            <div className="space-y-6">
+              <p 
+                className="font-bold text-on-surface leading-normal select-none transition-all duration-300" 
+                style={{ 
+                  fontSize: `${fontSize}px`, 
+                  fontFamily: fontFamily === "Sora" ? "var(--font-display)" : fontFamily === "Inter" ? "var(--font-sans)" : fontFamily === "Space Grotesk" ? "var(--font-label)" : "var(--font-mono)"
+                }}
+              >
+                Chào mừng bạn đến với PromptFlow. Đây là nội dung mẫu hiển thị trực quan.
+              </p>
+              <p className="text-xs text-on-surface-variant/70 italic">[Hãy nói đuổi theo dòng chữ đang trôi với tốc độ thực tế {speed} WPM ở đây]</p>
+              <p 
+                className="font-bold text-on-surface/60 leading-normal select-none transition-all duration-300" 
+                style={{ 
+                  fontSize: `${fontSize * 0.85}px`, 
+                  fontFamily: fontFamily === "Sora" ? "var(--font-display)" : fontFamily === "Inter" ? "var(--font-sans)" : fontFamily === "Space Grotesk" ? "var(--font-label)" : "var(--font-mono)"
+                }}
+              >
+                Hệ thống hỗ trợ cấu hình mượt mà font chữ, kích cỡ hiển thị và tốc độ cuộn phù hợp hoàn hảo với phong cách phát âm của riêng bạn.
+              </p>
+              <p className="text-xs text-secondary/45 font-mono uppercase tracking-widest mt-4">--- Hết vòng lặp mẫu ---</p>
+            </div>
           </div>
 
           {/* Glowing mirror badge indicator */}
-          <div className="absolute top-3 right-3 flex items-center gap-1.5">
+          <div className="absolute top-3 right-3 flex items-center gap-1.5 bg-black/40 px-2 py-1 rounded-full border border-white/5">
             <span className="w-2.5 h-2.5 rounded-full bg-primary animate-pulse shadow-[0_0_5px_#ff2d78]"></span>
             <span className="font-mono text-[9px] text-[#ff2d78] font-bold uppercase tracking-widest">LIVE HUD</span>
           </div>
